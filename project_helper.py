@@ -3,6 +3,14 @@
 #
 import numpy as np  # VanDerWalt S. et al., 2011
 import configparser
+try:
+    from numerical_helper import *
+except ImportError:
+    import sys
+    if '/home/megavolts/git/SimpleOilModel' in sys.path:
+        raise
+    sys.path.append('/home/megavolts/git/SimpleOilModel')
+    from numerical_helper import *
 
 try:
     import pysic
@@ -13,7 +21,6 @@ except ImportError:
     sys.path.append('/home/megavolts/git/pysic' )
     import pysic
 g = 9.80665  # m s^-2, Earth Gravitational Constant
-
 
 # Oil properties
 GAMMA_o = 20e-3  # kg s^-2 or 1e3 dyne/cm, interfacial tension between crude oil and water and ice, Malcom et al., 1979
@@ -169,36 +176,78 @@ def rho_oil(temp, oil_type='ANS'):
     return rho
 
 
+def lookup_TS_si_cover(TS, HI):
+    """
+    :param T: target ice surface temperature
+    :param HI: target ice thickness temperature
+    :return:
+
+    Lookup for target TS and HI within simulated hindcast of ice growth and decay seasonal evolution using CICE model. Forced with
+    reanalysis data from 1979 - 2018 (Oggier et al., 2020, submitted https://tc.copernicus.org/preprints/tc-2020-52/)
+    """
+
+    import pandas as pd
+    data = pd.read_csv('CICE_data-UTQ/modelout-mod2.csv')
+    data['date'] = pd.to_datetime(data[['year', 'month','day']])
+
+    # compute minimal distance between (TS, HS) and hindcast
+    data['distance'] = np.sqrt((HI*100-data['hi'])**2 + (TS-data['T_1'])**2)
+
+    # look for minimal distance
+    profile = data[data.distance == data.distance.min()].iloc[0]
+
+    start_date = profile.date
+    if profile.month <= 12:
+        end_date = pd.to_datetime(str(profile.year+1)+'-9-15')
+    else:
+        end_date = pd.to_datetime(str(profile.year)+'-9-15')
+
+    hi = profile.hi
+    if np.abs(hi - HI*100)/(HI*100) < 0.2:
+        s_header = [h for h in profile.index if 'S' in h]
+        s_profile = np.array(profile[s_header]).astype(float)
+        t_header = [h for h in profile.index if 'T' in h]
+        t_profile = np.array(profile[t_header]).astype(float)
+        TS_season = data.loc[(start_date <= data.date) & (data.date <= end_date)]
+        return s_profile, t_profile, TS_season
+    else:
+        print("ERROR: difference in ice thicknesses are too large")
+        return None
+
+def extract_TS_profile(TS_season, date, y):
+    t_header = [c for c in TS_season.columns if 'T' in c]
+    s_header = [c for c in TS_season.columns if 'S' in c]
+
+    profile = TS_season.loc[(TS_season.year == date.year) & (TS_season.month == date.month) & (TS_season.day == date.day)]
+    s_profile = np.array(profile[s_header].iloc[0])
+    t_profile = np.array(profile[t_header].iloc[0])
+    y_profile = np.linspace(0, profile.hi.iloc[0], 21)/100
+    y_profile = np.diff(y_profile)/2 + y_profile[:-1]
+
+    y = np.array(y)
+    y_mid = np.diff(y)/2 + y[:-1]
+
+    s_nearest = nearest_interp(y, y_profile, s_profile)[::-1]
+    t_interp = np.interp(y_mid, y_profile, t_profile)[::-1]
+
+    return s_nearest, t_interp
+
 def load_case(case_fp):
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(case_fp)
 
     bc_dict = {}
-    bc_dict['HI'] = config['ICE'].getfloat('HI')
-    try:
-        bc_dict['HD'] = config['ICE'].getfloat('HD')
-    except TypeError:
-        bc_dict['HD'] = config['ICE']['HD']
-    try:
-        bc_dict['HF'] = config['ICE'].getfloat('HF')
-    except TypeError:
-        bc_dict['HF'] = config['ICE']['HF']
-
-    try:
-        bc_dict['HG'] = config['ICE'].getfloat('HG')
-    except TypeError:
-        bc_dict['HG'] = config['ICE']['HG']
-
-    if bc_dict['HD'] == None and bc_dict['HF'] is None:
-        bc_dict['HD'] = 0.9 * bc_dict['HI']
-        bc_dict['HF'] = bc_dict['HI'] - bc_dict['HD']
-    elif bc_dict['HD'] is None:
-        bc_dict['HD'] = bc_dict['HI'] - bc_dict['HF']
-    elif bc_dict['HD'] is None:
-        bc_dict['HD'] = bc_dict['HI'] - bc_dict['HD']
+    bc_dict['HI'] = config['ICE'].getfloat('HI')  # m, ice thickness
+    bc_dict['HD'] = config['ICE'].getfloat('HD')  # m, ice draft
+    if bc_dict['HI'] is not None and bc_dict['HD'] is not None:
+        bc_dict['HF'] = bc_dict['HI'] - bc_dict['HD']  # ice freeboard
+    else:
+        print("Freeboard HD not defined")
+    bc_dict['HG'] = config['ICE'].getfloat('HG')  # m, granular ice thickness
+    bc_dict['HC'] = bc_dict['HI'] - bc_dict['HG']   # m, columnar ice thickness
 
     bc_dict['HR'] = config['OIL'].getfloat('HR')  # m, initial oil lens thickness
-    bc_dict['VR'] = config['OIL'].getfloat('VR') * 1e-3  # l, initial oil volume
+    bc_dict['VR'] = config['OIL'].getfloat('VR')  # L, initial oil volume
     return bc_dict
 
 
@@ -229,7 +278,7 @@ def brine_hydraulic_head(r, hi, hd, rho_sw, rho_b):
     hb = np.atleast_1d(hb)
 
     hb_mask = [hb > hi]
-    hb[hb_mask] = hi
+    hb[hb > hi] = hi
 
     if hb.size == 1:
         return hb[0]

@@ -16,7 +16,7 @@ except ImportError:
 # Variable definition
 data_dir = '/mnt/data/UAF-data/paper/4/'
 case_fn = 'oil_spill_case/Test-1_10_10.ini'
-
+fig_dir = '/home/megavolts/Desktop'
 # Discretization
 N_layers = 1000
 
@@ -133,6 +133,8 @@ l_.extend(l1_)
 h_.extend(h1_)
 plt.legend(l_, h_, loc='best', ncol=2)
 plt.title('Case 1 - coefficient')
+import os
+plt.savefig(os.path.join(fig_dir, 'case1.jpg'))
 plt.show()
 
 
@@ -171,6 +173,8 @@ l_.extend(l1_)
 h_.extend(h1_)
 plt.legend(l_, h_, loc='best', ncol=2)
 plt.title('Case 2 - coefficient')
+import os
+plt.savefig(os.path.join(fig_dir, 'case2.jpg'))
 plt.show()
 
 ho = np.arange(0, 1, 0.01)
@@ -186,4 +190,6 @@ l_.extend(l1_)
 h_.extend(h1_)
 plt.legend(l_, h_, loc='best', ncol=2)
 plt.title('Case 2 - coefficient')
+import os
+plt.savefig(os.path.join(fig_dir, 'case3.jpg'))
 plt.show()

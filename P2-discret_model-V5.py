@@ -10,23 +10,23 @@ try:
     from project_helper import *
 except ImportError:
     import sys
-    if '/home/megavolts/git/SimpleOilModel' in sys.path:
+    if '/home/megavolts/git/1DVerticalOilMigration' in sys.path:
         raise
-    sys.path.append('/home/megavolts/git/SimpleOilModel')
+    sys.path.append('/home/megavolts/git/1DVerticalOilMigration')
     from project_helper import *
 try:
     from numerical_helper import *
 except ImportError:
     import sys
-    if '/home/megavolts/git/SimpleOilModel' in sys.path:
+    if '/home/megavolts/git/1DVerticalOilMigration' in sys.path:
         raise
-    sys.path.append('/home/megavolts/git/SimpleOilModel')
+    sys.path.append('/home/megavolts/git/1DVerticalOilMigration')
     from numerical_helper import *
 
 
 # Variable definition
 data_dir = '/mnt/data/UAF-data/paper/4/'
-fig_dir = '/home/megavolts/UAF/paper/Chapter4/figures/model/'
+fig_dir = '/home/megavolts/Desktop/figures/model/'
 case_fn = 'oil_spill_case/Test-1_10_10.ini'
 
 # Discretization
@@ -260,7 +260,7 @@ porespace = porespace.reset_index(drop=True)
 ax = plot_porespace(porespace)
 plt.suptitle(str('N$_l$=%s, dt=%.2f' % (N_layers, t_step)))
 ps_fn = run_fn+'-porespace.jpg'
-ps_fp = os.path.join(run_fd, ps_fn)
+ps_fp = os.path.join(fig_dir, ps_fn)
 plt.savefig(ps_fp, dpi=300)  # Save figures
 plt.show()  # Display Figures
 

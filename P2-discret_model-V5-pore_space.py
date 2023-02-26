@@ -10,45 +10,45 @@ try:
     from project_helper import *
 except ImportError:
     import sys
-    if '/home/megavolts/git/SimpleOilModel' in sys.path:
+    if '/home/megavolts/git/1DVerticalOilMigration' in sys.path:
         raise
-    sys.path.append('/home/megavolts/git/SimpleOilModel')
+    sys.path.append('/home/megavolts/git/1DVerticalOilMigration')
     from project_helper import *
 try:
     from numerical_helper import *
 except ImportError:
     import sys
-    if '/home/megavolts/git/SimpleOilModel' in sys.path:
+    if '/home/megavolts/git/1DVerticalOilMigration' in sys.path:
         raise
-    sys.path.append('/home/megavolts/git/SimpleOilModel')
+    sys.path.append('/home/megavolts/git/1DVerticalOilMigration')
     from numerical_helper import *
 
 
 # Variable definition
 data_dir = '/mnt/data/UAF-data/paper/4/'
-fig_dir = '/home/megavolts/UAF/paper/Chapter4/figures/model/'
+fig_dir = '/home/megavolts/Desktop/figures/model/'
 case_fn = 'oil_spill_case/Test-1_10_10.ini'
 
 # Discretization
-N_layers = 500
+N_layers = 200
 t_step = 0.1  # Fallback t_step: large because flow is small
 
 HIGH_RES = False
-Nfig = 100
+Nfig = 10
 
-DEBUG = False
+DEBUG = True
 epsilon = 1e-12
 
 # TODO change True to Enable or Disable
-R = 0.5e-3  # True to enable, if float
-HR = 0.55
+R = True # True to enable, if float
+HR = 0.9
 VR = 300
-dL = False  # False to disable QBLOSS
-SI_PHYSIC = 'override'  # False to use mean salinity, temperature; 'override' to use salinity and temperature from mat_dict
+dL = 0.05  # False to disable QBLOSS
+SI_PHYSIC = True # False to use mean salinity, temperature; 'override' to use salinity and temperature from mat_dict
 T_si = -5  # °C, initial sea-ice temperature
 S_si = 5  # ‰, initial sea-ice bulk salinity
-SI_STRAT = False  # False to disable, distance to granular/columnar layer. Negative from surface. Positive from bottom
-TORT = False  # False to disable; 'override' to use tortuosity from mat_idct
+SI_STRAT = True  # False to disable, distance to granular/columnar layer. Negative from surface. Positive from bottom
+TORT = True  # False to disable; 'override' to use tortuosity from mat_idct
 tau = 1
 tau_g = 2.0
 tau_c = 1.05
@@ -228,6 +228,7 @@ porespace['salinity'] = nearest_interp(porespace.h, s_profile.y_mid.values*ratio
 # Temperature profile
 ratio_t_HI = HI/s_profile.y_mid.max()
 porespace['temperature'] = np.interp(porespace.h_mid, s_profile.y_mid*ratio_t_HI, s_profile.temperature)
+
 # Orient profile correctly with z=0 at the oil lens interface
 if len(s_profile.v_ref.unique()) == 1 and s_profile.v_ref.unique()[0] == 'top':
     porespace['h'] = porespace['h'].max() - porespace['h']
@@ -259,7 +260,7 @@ porespace = porespace.reset_index(drop=True)
 ax = plot_porespace(porespace)
 plt.suptitle(str('N$_l$=%s, dt=%.2f' % (N_layers, t_step)))
 ps_fn = run_fn+'-porespace.jpg'
-ps_fp = os.path.join(run_fd, ps_fn)
+ps_fp = os.path.join(fig_dir, ps_fn)
 plt.savefig(ps_fp, dpi=300)  # Save figures
 plt.show()  # Display Figures
 
@@ -327,7 +328,6 @@ ps_fp = os.path.join(run_fd, run_fn, dict_df)
 with open(ps_fp, 'w+') as f:
     yaml.dump(os_dict, f)
 pickle_fp = os.path.join(run_fd, run_fn, run_fn + '.pkl')
-print(HB)
 
 N_fig = 5
 while not STOP:
@@ -611,7 +611,7 @@ while not STOP:
         vb_kk = dvbs + ps_df[['V', 'f_b']].apply(lambda x: x[0] * x[1], axis=1)[kk_hb]
         f_b_kk = vb_kk / ps_df['V'][kk_hb]
         print(dvbs, hb, kk_hb, f_b_kk)
-        while f_b_kk - 1 > -epsilon and kk_hb < N_layers-1:
+        while f_b_kk - 1 > -epsilon and ii_ho < N_layers-1:
             data_c[ii_t, 0, kk_hb] = -1
             kk_hb += 1
             ii_hb = kk_hb
@@ -844,7 +844,7 @@ ax[1].legend(l1_, h1_, loc='upper center', ncol=2, labelspacing=0.2, columnspaci
 
 fig.subplots_adjust(bottom=0, top=1)
 ho_fn = run_fn + '-ho.jpg'
-ps_fp = os.path.join(run_fd, ho_fn)
+ps_fp = os.path.join(fig_dir, ho_fn)
 
 plt.suptitle(str(
     '$\overline{R}$=%.1e, H$_R$=%.2f, V$_R$=%.2e, $\Delta$L=%.2f, $\\tau$: %s, TS:%s\n N$_{layer}$=%i, dt=%.2f ' %
