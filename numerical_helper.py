@@ -467,9 +467,9 @@ def plot_porespace(porespace, ax=None, figsize=(10, 4)):
     ax[2].set_xticklabels([1e-2, 5e-1])
     ax[2].set_xscale('log')
 
-
     ax[3].step(porespace.rho_o, porespace.h, c=cmap(0.95), label='$\\rho_o$')
     ax[3].step(porespace.rho_b, porespace.h, c=cmap(0.5), label='$\\rho_b$')
+
     ax[4].step(porespace.vf_b * 100, porespace.h, c=cmap(0.5), label='$V_{f,b}$')
 
     ax[5].step(porespace.kv, porespace.h, c=cmap(0.1), label='$k_v$')
@@ -533,6 +533,129 @@ def plot_porespace(porespace, ax=None, figsize=(10, 4)):
     ax[6].spines['top'].set_color(cmap(0.1))
     ax[6].tick_params(axis='x', colors=cmap(0.1))
     ax[6].set_xscale('log')
+
+    plt.ylim([0, HI])
+    plt.tight_layout()
+
+    return ax
+
+
+def plot_ps(porespace, ax=None, figsize=(5.6, 4)):
+    HI = porespace.h.max()
+
+    if ax is None or len(ax) != 7:
+        fig, ax = plt.subplots(1, 4, sharey=True, figsize=figsize)
+    ax[0].plot(porespace.temperature, porespace.h, c=cmap(0.1), label='temperature')
+
+    ax[1].step(porespace.salinity, porespace.h, c=cmap(0.1), label="S$_{si}$")
+    ax1 = ax[1].twiny()
+    ax1.step(porespace.S_b, porespace.h, c=cmap(0.5), label="S$_b$")
+
+    ax[2].step(porespace.vf_b * 100, porespace.h, c=cmap(0.5), label='$V_{f,b}$')
+
+    ax[3].step(porespace.r, porespace.h, c=cmap(0.1), label="r")
+    ax[3].set_xlim([1e-4, 1e-2])
+    ax3 = ax[3].twiny()
+    ax3.step(porespace.tau, porespace.h, c=cmap(0.5), label="$\\tau$")
+    ax3.set_xlim([0.95, 3])
+
+    ax[0].set_ylim([HI, 0])
+    ax[0].set_ylabel('Depth (m)')
+    ax[0].set_xlabel('Temperature\n(°C)')
+    ax[0].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+
+    ax[1].set_xlabel('Salinity\n(‰)')
+    h_, l_ = ax[1].get_legend_handles_labels()
+    h2_, l2_ = ax1.get_legend_handles_labels()
+    h_.extend(h2_)
+    l_.extend(l2_)
+    ax[1].legend(h_, l_, frameon=False)
+    ax1.spines['top'].set_color(cmap(0.5))
+    ax1.tick_params(axis='x', colors=cmap(0.5))
+    ax[1].spines['top'].set_color(cmap(0.1))
+    ax[1].tick_params(axis='x', colors=cmap(0.1))
+
+    ax[2].set_xlabel('Brine volume\nfraction (%)')
+    ax[2].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+    ax[2].legend(frameon=False)
+
+    ax[3].set_xlabel('Throat diameter\n(m)')
+    ax3.set_xlabel('Tortuosity\n')
+    h_, l_ = ax[3].get_legend_handles_labels()
+    h2_, l2_ = ax3.get_legend_handles_labels()
+    h_.extend(h2_)
+    l_.extend(l2_)
+    ax[3].legend(h_, l_, frameon=False)
+    ax3.spines['top'].set_color(cmap(0.5))
+    ax3.tick_params(axis='x', colors=cmap(0.5))
+    ax[3].spines['top'].set_color(cmap(0.1))
+    ax[3].tick_params(axis='x', colors=cmap(0.1))
+    ax[3].set_xscale('log')
+
+    plt.ylim([0, HI])
+    plt.tight_layout()
+
+    return ax
+
+
+def plot_properties(porespace, ax=None, figsize=(7.2, 4)):
+    HI = porespace.h.max()
+
+    if ax is None or len(ax) != 5:
+        fig, ax = plt.subplots(1, 5, sharey=True, figsize=figsize)
+    ax[0].plot(porespace.temperature, porespace.h, c=cmap(0.1), label='temperature')
+
+    ax[1].step(porespace.salinity, porespace.h, c=cmap(0.1), label="S$_{si}$")
+    ax1 = ax[1].twiny()
+    ax1.step(porespace.S_b, porespace.h, c=cmap(0.5), label="S$_b$")
+
+    ax[2].step(porespace.mu_o, porespace.h, c=cmap(0.95), label="$\mu_o$")
+    ax[2].step(porespace.mu_b, porespace.h, c=cmap(0.5), label='$\mu_b$')
+    ax[2].set_xlim([1e-3, 10])
+    ax[2].set_xticks([1e-3, 1e-1])
+    ax[2].set_xticklabels([1e-2, 5e-1])
+    ax[2].set_xscale('log')
+
+    ax[3].step(porespace.rho_o, porespace.h, c=cmap(0.95), label='$\\rho_o$')
+    ax[3].step(porespace.rho_b, porespace.h, c=cmap(0.5), label='$\\rho_b$')
+
+    ax[4].step(porespace.kv, porespace.h, c=cmap(0.1), label='$k_v$')
+    ax[4].step(porespace.kh1, porespace.h, '--', c=cmap(0.1), label='$k_{h1}}$')
+    ax[4].step(porespace.kh2, porespace.h, ':', c=cmap(0.1), label='$k_{h2}}$')
+    ax[4].set_xlim([1e-15, 1e-8])
+    ax[4].set_xticks([1e-15, 1e-8])
+    ax[4].set_xticklabels([1e-14, 1e-8])
+    ax[4].set_xscale('log')
+
+    ax[0].set_ylim([HI, 0])
+    ax[0].set_ylabel('Depth (m)')
+    ax[0].set_xlabel('Temperature\n(°C)')
+    ax[0].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+
+    ax[1].set_xlabel('Salinity\n(‰)')
+    h_, l_ = ax[1].get_legend_handles_labels()
+    h2_, l2_ = ax1.get_legend_handles_labels()
+    h_.extend(h2_)
+    l_.extend(l2_)
+    ax[1].legend(h_, l_, frameon=False)
+    ax1.spines['top'].set_color(cmap(0.5))
+    ax1.tick_params(axis='x', colors=cmap(0.5))
+    ax[1].spines['top'].set_color(cmap(0.1))
+    ax[1].tick_params(axis='x', colors=cmap(0.1))
+
+    ax[2].set_xlabel('Viscosity\n(Pa s)')
+    ax[2].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+    ax[2].legend(frameon=False)
+
+    ax[3].set_xlabel('Density\n(kg m$^{-3}$)')
+    ax[3].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+    ax[3].legend(frameon=False)
+    ax[3].set_xticks([900, 1100])
+    ax[3].set_xticklabels([900, 1100])
+
+    ax[4].set_xlabel('Permeability\n(m$^2$)')
+    ax[4].tick_params(bottom=True, labelbottom=True, top=True, labeltop=True)
+    ax[4].legend(frameon=False)
 
     plt.ylim([0, HI])
     plt.tight_layout()

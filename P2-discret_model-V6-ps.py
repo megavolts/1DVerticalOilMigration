@@ -6,6 +6,9 @@ import yaml
 import os
 import pickle
 
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+
 try:
     from project_helper import *
 except ImportError:
@@ -32,22 +35,20 @@ case_fn = 'oil_spill_case/thick_ice.ini'
 N_layers = 1000
 
 # CASE
-N_case = case_fn.split('/')[1].split('ini')[0]  # 2: thin ice; 1: thick ice, 20: thin ice, late winter
+N_case = case_fn.split('/')[1].split('.ini')[0]  # 2: thin ice; 1: thick ice, 20: thin ice, late winter
 run_n = 1
-LOAD = True
+LOAD = False
 OVERRIDE = False
-CORRECTED_PS = True
+UNCORRECTED_PS = False
 HIGH_RES = False
 TS = -20  # ice surface temperature
 DEBUG = True
 
 # t_step modification flag
-t_step = 0.1  # Fallback t_step: lsarge because flow is small
-flag_fast = True
-flag_faster = True
+t_step = 0.1  # Fallback t_step: large because flow is small
 # TODO change True to Enable or Disable
 R = True  # True to enable, if float
-dL = 0.5  # False to disable QBLOSS, brine loss through channel wall
+dL = 0.05  # False to disable QBLOSS, brine loss through channel wall
 SI_PHYSIC = True  # False to use mean salinity, temperature; 'override' to use salinity and temperature from mat_dict
 SI_STRAT = True  # False to disable, distance to granular/columnar layer. Negative from surface. Positive from bottom
 TORT = True  # False to disable; 'override' to use tortuosity from mat_idct
@@ -176,9 +177,8 @@ else:
 
     porespace = generate_porespace_geometry(porespace, os_dict)
     porespace = generate_porespace_physics(porespace, os_dict)
-    porespace_corr = correct_porespace_radius(porespace.copy())
-    if CORRECTED_PS:
-        porespace = porespace_corr
+    porespace['r0'] = porespace['r']
+    porespace = correct_porespace_radius(porespace.copy())
 
     HD = ice_draft_nm(porespace, os_dict)[0]
     os_dict['BC']['HD'] = HD
@@ -191,41 +191,47 @@ else:
     porespace['r'].iloc[-1] = porespace['r'].iloc[-2]
     porespace = porespace.reset_index(drop=True)
 
-    # same for corected porespace
-    porespace_corr = porespace_corr.append(pd.DataFrame([np.nan * np.ones_like(porespace_corr.iloc[0])], columns=porespace_corr.columns))
-    porespace_corr['h'].iloc[-1] = bc_dict['HI']
-    porespace_corr['V'].iloc[-1] = 1
-    porespace_corr['dh'].iloc[-1] = porespace_corr.iloc[-2]['dh']
-    porespace_corr['r'].iloc[-1] = porespace_corr['r'].iloc[-2]
-    porespace_corr = porespace_corr.reset_index(drop=True)
-
     pkl_fp = os.path.join(run_fp, run_fn + '-porsepace.pkl')
     with open(pkl_fp, 'wb') as f:
-        pickle.dump([os_dict, porespace, porespace_corr, TS_season], f)
+        pickle.dump([os_dict, porespace, TS_season], f)
     # Backup config
     dict_df = run_fn + '-config.yaml'
     ps_fp = os.path.join(run_fp, dict_df)
     with open(ps_fp, 'w+') as f:
         yaml.dump(os_dict, f)
 
-# Plot TS:
-fig, ax = plt.subplots(figsize=[3, 3])
-ax.plot(porespace.temperature, porespace.h)
-ax.plot(porespace.salinity, porespace.h)
-plt.savefig(os.path.join(run_fp, run_fn + '-TS.jpg'))
+if UNCORRECTED_PS:
+    porespace['r'] = porespace['r0']
+#
+# # PLot porespace and properties condition
+# ax = plot_porespace(porespace)
+# plt.suptitle(str('N$_l$=%s, dt=%.2f' % (N_layers, t_step)))
+# ps_fn = run_fn+'-porespace.jpg'
+# ps_fp = os.path.join(run_fp, ps_fn)
+# plt.savefig(ps_fp, dpi=300)  # Save figures
 
-# PLot initial condition
-ax = plot_porespace(porespace)
-plt.suptitle(str('N$_l$=%s, dt=%.2f' % (N_layers, t_step)))
-ps_fn = run_fn+'-porespace.jpg'
+# Plot properties
+plot_ps_data = porespace.copy()
+ax = plot_properties(plot_ps_data)
+ps_fn = run_fn+'-prop.jpg'
+ps_fp = os.path.join(run_fp, ps_fn)
+plt.savefig(ps_fp, dpi=300)  # Save figures
+
+# PLot porespace (both corrected (r) and uncorrected (r0)
+plot_ps_data = porespace.copy()
+ax = plot_ps(plot_ps_data)
+ps_fn = run_fn+'-ps_r.jpg'
+ps_fp = os.path.join(run_fp, ps_fn)
+plt.savefig(ps_fp, dpi=300)  # Save figures
+
+plot_ps_data = porespace.copy()
+plot_ps_data['r'] = plot_ps_data['r0']
+ax = plot_ps(plot_ps_data)
+ps_fn = run_fn+'-ps_r0.jpg'
 ps_fp = os.path.join(run_fp, ps_fn)
 plt.savefig(ps_fp, dpi=300)  # Save figures
 
 ## INITIALIZED
-flag_brine_surface = 0
-flag_brine_matrix = 0
-t_step_original = t_step
-
 ps_df = porespace
 ps_df['p_si'] = RHO_sw * g * (os_dict['BC']['HD']) - porespace['h'].apply(lambda x: RHO_sw * x * g if RHO_sw * x * g > 0 else 0)
 HB, ii_hb, vf_bc = brine_hyraulic_head_dm(porespace, os_dict)  # height of brine in chann
@@ -321,8 +327,6 @@ while not STOP: # and ii_ho < 11:
 
             # compute new physic profile
             porespace = generate_porespace_physics(porespace, os_dict)
-            if CORRECTED_PS:
-                porespace = correct_porespace_radius(porespace)
 
     # Update volume fraction
     ps_df['f_b'] = fraction_cell(data_c[ii_t, 0, :], 'b')  # -
@@ -481,8 +485,6 @@ while not STOP: # and ii_ho < 11:
         #     for q_ in q_lim:
         #         print(str('\t%i\t%.4e' % (q_, delta_t_ho - delta_t[q_].values)))
         #     break
-        flag_brine_matrix = 0
-        t_step = t_step_original
     elif hb == HI and not END_CHANNEL:
         mode = 'brine surfaced'
         # Time required to move oil into element ii_ho
@@ -534,8 +536,6 @@ while not STOP: # and ii_ho < 11:
 
             # Total flow of brine expelled from the channel (lateral flow)
             qb_loss = np.sum(data_c[ii_t, 7, :-1])  # Check qb_si + qb[ii_hb] = qo (m3 / s)
-        flag_brine_matrix = 0
-        t_step = t_step_original
     else:
         if dL:
             # Check for brine displacement:
@@ -544,11 +544,6 @@ while not STOP: # and ii_ho < 11:
                 mode = 'Ql'
                 delta_t_b = dvo / qb_loss
                 delta_t_ho = t_step
-                flag_brine_matrix += 1
-                if flag_brine_matrix == 10 and flag_fast:
-                    t_step = t_step * 10
-                elif flag_brine_matrix == 100 and flag_faster:
-                    t_step = t_step * 10
 
                 # volume of oil cannot exceed volume of brine
                 dvo = qb_loss * delta_t_ho
@@ -622,16 +617,9 @@ while not STOP: # and ii_ho < 11:
     kk_hb = ii_hb
     if END_CHANNEL is False and hb == HI:
         print("Brine has already reached the ice surface")
-        flag_brine_surface += 1
-        if flag_brine_surface == 10 and flag_fast:
-            t_step = 10*t_step
-        elif flag_brine_surface == 100 and flag_faster:
-            t_step = 10 * t_step
         vb_surface_t = vb_t_residue
         vb_t_residue = 0
     elif vb_t_residue > 0:
-        flag_brine_surface = 0
-        t_step = t_step_original
         if data_c[ii_t, 0, kk_hb] > 0:
             print("ERROR Cannot move brine into a cell partially occupied by oil")
             STOP = True
@@ -808,15 +796,142 @@ data_q_df = pd.DataFrame(data_q, columns=data_q_headers)
 print('R\t\tHR\t\tVR\t\tHB\t\tt\t\tho\t\tDp')
 print(str('%.2f\t%.2f\t%.1e\t%.4f\t%.2f\t%.4f\t%.0f' % (R, HR, VR, HB, data_df.t.iloc[-1], data_df.ho.iloc[-1], data_df.delta_p.iloc[-1])))
 plt.close()
+#
+# ## Double figure:
+# fig = plt.figure(figsize=(8, 6))
+# ax = fig.subplots(1, 2)
+#
+# # Plot 1
+# ax[0].plot(data_df.t / 3600, data_df.ho, 'k-', label='$h_o$')
+# ax[0].plot(data_df.t / 3600, data_df.hb, 'b', label='$h_b+h_o$')
+# ax[0].plot(data_df.t / 3600, [HI - HB] * len(data_df), label='$H_i - H_b$')
+# ax[0].plot(data_df.t / 3600, [HI] * len(data_df), 'k', alpha=0.5, label='$H_i$')
+# ax[0].plot(data_df.t / 3600, [HD] * len(data_df), 'b:', alpha=0.5, label='$H_D$')
+# ax0 = ax[0].twinx()
+# ax0.plot(data_df.t / 3600, data_df.qo, 'r', label='$Q_{o}$')
+# if dL:
+#     ax0.plot(data_df.t / 3600, data_df.qb_loss, ':', c='orange', label='$Q_{b,loss}$')
+# ax0.spines['right'].set_color('r')
+#
+# ax[0].fill_between(data_df.t.astype(float) / 3600, [-HR - 0.1] * len(data_df), -data_df.hr.astype(float), color='b',
+#                    alpha=0.5)  # ocean underneath
+# ax[0].fill_between(data_df.t.astype(float) / 3600, -data_df.hr.astype(float), [0] * len(data_df), color='k')  # oil lens
+# ax[0].plot(data_df.t / 3600, -data_df.hr, color='k')
+#
+# t_max = data_df.loc[data_df.ho <= data_df.ho.max(skipna=True), 't'].max(skipna=True) / 3600
+# t_min = data_df.loc[data_df.t >= 0, 't'].min(skipna=True) / 3600
+# ax[0].set_xlim([t_min, t_max])
+#
+# _x_text = data_df.t.max()
+# ax[0].set_ylabel('penetration depth (m)')
+# ax[0].set_xlabel('Time (h)')
+# ax[0].set_ylim([-HR - 0.1, HI + 0.1])
+# ax[0].text(data_df.t.max() / 3600 * 0.02, 0, 'Oil', color='w',
+#            horizontalalignment='left', verticalalignment='top')
+# ax[0].text(data_df.t.max() / 3600 / 2, -HR - 0.1, 'Sea water', color='w',
+#            horizontalalignment='center', verticalalignment='bottom')
+# ax[0].text(data_df.t.max() / 3600 * .98, HI / 2, 'Ice cover', color='k',
+#            horizontalalignment='right', verticalalignment='center')
+# ax[0].text(data_df.t.max() / 3600 * 0.98, 0.75 * HI, str('h$_o$=%.02f cm' % (data_df.ho.max() * 100)),
+#            horizontalalignment='right', verticalalignment='center')
+#
+# ax0.set_yscale('log')
+# ax0.set_ylabel('Flow (m$^3$s$^{-1}$)', c='red')
+#
+# y_lim = ax0.get_ylim()
+# y_lim_min = 10 ** np.floor(np.log10(min(y_lim)))
+# y_lim_max = 10 ** np.ceil(np.log10(max(y_lim)))
+#
+# if np.ceil(np.log10(max(y_lim))) < np.floor(np.log10(min(y_lim))) + 3:
+#     y_lim_max = 10 ** np.floor(np.log10(min(y_lim) + 3))
+#
+# if y_lim_max > 1e-6:
+#     y_lim_max = 1e-6
+#
+# ax0.set_ylim([y_lim_min, y_lim_max])
+#
+# ax[1].plot(data_p_df.ho, data_p_df.delta_p, 'k', label='$\Delta p_{tot}$')
+# ax[1].plot(data_p_df.ho, data_p_df.poc + data_p_df.poR, label='$p_o$')  # large
+# ax[1].plot(data_p_df.ho, data_p_df.pbc, label='$p_{o\\rightarrow b,c}$')
+# ax[1].plot(data_p_df.ho,
+#            data_p_df.poc + data_p_df.poR - data_p_df.pc_o + data_p_df.pc_b + data_p_df.p_qloss + data_p_df.pbc,
+#            label='$[p+]$')
+#
+# ax1_label = '$\Delta p_{tot}$, $p_o$, $p+$'
+# ax2_label = ' $p_{c,o}$, $p_{c,b}$'
+#
+# ax1 = ax[1].twinx()
+# if max(data_p_df.pbs) > 200:
+#     ax[1].plot(data_p_df.ho, data_p_df.pbs, 'r', label='$p_b|_{h> H_b}$ [p-]')  # Small or Large
+#     ax1_label = ax1_label + ', $p_b|_{h> H_b}$ [p-]'
+# else:
+#     ax1.plot(data_p_df.ho, data_p_df.pbs, 'r:', label='$p_b|_{h> H_b}$ [p-]')  # Small or Large
+#     ax2_label = ax2_label + ', $p_b|_{h> H_b}$ [p-]'
+#
+# ax1.plot(data_p_df.ho, data_p_df.pc_b, ':', label='$p(h_b)$')  # Small
+# ax1.plot(data_p_df.ho, -data_p_df.pc_o, ':', label='-$p_{c,o}$')  # Small
+#
+# if dL:
+#     if max(data_p_df.p_qloss) > 200:
+#         ax[1].plot(data_p_df.ho, data_p_df.p_qloss, label='$p_{q_{b,loss}}$')
+#         ax1_label = ax1_label + ', $p_{q_{b,loss}}$'
+#     else:
+#         ax1.plot(data_p_df.ho, data_p_df.p_qloss, ':', label='$p_{q_{b,loss}}$')
+#         ax2_label = ax2_label + ', $p_{q_{b,loss}}$'
+#
+# y_lim = ax[1].get_ylim()
+# ax[1].set_ylim()
+# ax[1].set_xlim([0, data_p_df.ho.max()])
+#
+# if HI - HB < ax[1].get_xlim()[-1]:
+#     ax[1].plot([HI - HB] * 2, y_lim, 'k--', alpha=0.5, label='$H_i - H_b$')
+# if HB < ax[1].get_xlim()[-1]:
+#     ax[1].plot([HB] * 2, y_lim, 'k-.', alpha=0.5, label='$H_D$')
+# if SI_STRAT:
+#     if HI - HG < ax[1].get_xlim()[-1]:
+#         ax[1].plot([HI - HG] * 2, y_lim, 'k:', alpha=0.5, label='$H_C$')
+#
+# ax[1].set_xlabel('Penetration depth (m)')
+# ax[1].set_ylabel('Pressure (Pa): ' + ax1_label)
+# ax1.set_ylabel('Pressure (Pa): ' + ax2_label)
+#
+# # Legend
+# l_, h_ = ax[0].get_legend_handles_labels()
+# l0_, h0_ = ax0.get_legend_handles_labels()
+# l_.extend(l0_)
+# h_.extend(h0_)
+# l1_, h1_ = ax[1].get_legend_handles_labels()
+# l2_, h2_ = ax1.get_legend_handles_labels()
+# l1_.extend(l2_)
+# h1_.extend(h2_)
+# ax[0].legend(l_, h_, loc='upper center', ncol=2, labelspacing=0.2, columnspacing=1,
+#              bbox_to_anchor=(0.5, -0.1), frameon=False)
+# ax[1].legend(l1_, h1_, loc='upper center', ncol=2, labelspacing=0.2, columnspacing=1,
+#              bbox_to_anchor=(0.5, -0.1), frameon=False)
+#
+# fig.subplots_adjust(bottom=0, top=1)
+# ho_fn = run_fn + '-ho.jpg'
+# ps_fp = os.path.join(run_fp, ho_fn)
+#
+#
+# plt.suptitle(str(
+#     '$\overline{R}$=%.1e, H$_R$=%.2f, V$_R$=%.2e, $\Delta$L=%.2f, $\\tau$: %s, TS:%s\n N$_{layer}$=%i, dt=%.2f ' %
+#     (ps_df.r[:-1].mean(), HR, VR, dL, str(TORT)[0], str(TORT)[0], N_layers, t_step)))
+# plt.tight_layout()
+#
+# ps_fp = os.path.join(run_fp, run_fn + 'results.jpg')
+# plt.savefig(ps_fp, dpi=300)  # Save figures
+# plt.show()
 
-## Double figure:
-fig = plt.figure(figsize=(8, 6))
-ax = fig.subplots(1, 2)
+# Final report figure:
 
+## Single figure:
+fig = plt.figure(figsize=(4, 4))
+ax = fig.subplots(1, 1)
+ax = [ax]
 # Plot 1
 ax[0].plot(data_df.t / 3600, data_df.ho, 'k-', label='$h_o$')
-ax[0].plot(data_df.t / 3600, data_df.hb, 'b', label='$h_b+h_o$')
-ax[0].plot(data_df.t / 3600, [HI - HB] * len(data_df), label='$H_i - H_b$')
+ax[0].plot(data_df.t / 3600, data_df.hb, 'b', label='$h_b$')
 ax[0].plot(data_df.t / 3600, [HI] * len(data_df), 'k', alpha=0.5, label='$H_i$')
 ax[0].plot(data_df.t / 3600, [HD] * len(data_df), 'b:', alpha=0.5, label='$H_D$')
 ax0 = ax[0].twinx()
@@ -833,18 +948,20 @@ ax[0].plot(data_df.t / 3600, -data_df.hr, color='k')
 t_max = data_df.loc[data_df.ho <= data_df.ho.max(skipna=True), 't'].max(skipna=True) / 3600
 t_min = data_df.loc[data_df.t >= 0, 't'].min(skipna=True) / 3600
 ax[0].set_xlim([t_min, t_max])
-
 _x_text = data_df.t.max()
 ax[0].set_ylabel('penetration depth (m)')
 ax[0].set_xlabel('Time (h)')
 ax[0].set_ylim([-HR - 0.1, HI + 0.1])
-ax[0].text(data_df.t.max() / 3600 * 0.02, 0, 'Oil', color='w',
-           horizontalalignment='left', verticalalignment='top')
-ax[0].text(data_df.t.max() / 3600 / 2, -HR - 0.1, 'Sea water', color='w',
-           horizontalalignment='center', verticalalignment='bottom')
-ax[0].text(data_df.t.max() / 3600 * .98, HI / 2, 'Ice cover', color='k',
+
+ylim = ax[0].get_ylim()
+
+ax[0].text(data_df.t.max() / 3600 * 0.05, -HR/2, 'Oil', color='w',
+           horizontalalignment='left', verticalalignment='center')
+ax[0].text(data_df.t.max() / 3600 * 0.05, -HR + (ylim[0] + HR)/2, 'Sea water', color='w',
+           horizontalalignment='left', verticalalignment='center')
+ax[0].text(data_df.t.max() / 3600 * .95, HI / 2, 'Ice cover', color='k',
            horizontalalignment='right', verticalalignment='center')
-ax[0].text(data_df.t.max() / 3600 * 0.98, 0.75 * HI, str('h$_o$=%.02f cm' % (data_df.ho.max() * 100)),
+ax[0].text(data_df.t.max() / 3600 * 0.95, 0.75 * HI, str('h$_o$=%.02f cm' % (data_df.ho.max() * 100)),
            horizontalalignment='right', verticalalignment='center')
 
 ax0.set_yscale('log')
@@ -862,75 +979,19 @@ if y_lim_max > 1e-6:
 
 ax0.set_ylim([y_lim_min, y_lim_max])
 
-ax[1].plot(data_p_df.ho, data_p_df.delta_p, 'k', label='$\Delta p_{tot}$')
-ax[1].plot(data_p_df.ho, data_p_df.poc + data_p_df.poR, label='$p_o$')  # large
-ax[1].plot(data_p_df.ho, data_p_df.pbc, label='$p_{o\\rightarrow b,c}$')
-ax[1].plot(data_p_df.ho,
-           data_p_df.poc + data_p_df.poR - data_p_df.pc_o + data_p_df.pc_b + data_p_df.p_qloss + data_p_df.pbc,
-           label='$[p+]$')
-
-ax1_label = '$\Delta p_{tot}$, $p_o$, $p+$'
-ax2_label = ' $p_{c,o}$, $p_{c,b}$'
-
-ax1 = ax[1].twinx()
-if max(data_p_df.pbs) > 200:
-    ax[1].plot(data_p_df.ho, data_p_df.pbs, 'r', label='$p_b|_{h> H_b}$ [p-]')  # Small or Large
-    ax1_label = ax1_label + ', $p_b|_{h> H_b}$ [p-]'
-else:
-    ax1.plot(data_p_df.ho, data_p_df.pbs, 'r:', label='$p_b|_{h> H_b}$ [p-]')  # Small or Large
-    ax2_label = ax2_label + ', $p_b|_{h> H_b}$ [p-]'
-
-ax1.plot(data_p_df.ho, data_p_df.pc_b, ':', label='$p(h_b)$')  # Small
-ax1.plot(data_p_df.ho, -data_p_df.pc_o, ':', label='-$p_{c,o}$')  # Small
-
-if dL:
-    if max(data_p_df.p_qloss) > 200:
-        ax[1].plot(data_p_df.ho, data_p_df.p_qloss, label='$p_{q_{b,loss}}$')
-        ax1_label = ax1_label + ', $p_{q_{b,loss}}$'
-    else:
-        ax1.plot(data_p_df.ho, data_p_df.p_qloss, ':', label='$p_{q_{b,loss}}$')
-        ax2_label = ax2_label + ', $p_{q_{b,loss}}$'
-
-y_lim = ax[1].get_ylim()
-ax[1].set_ylim()
-ax[1].set_xlim([0, data_p_df.ho.max()])
-
-if HI - HB < ax[1].get_xlim()[-1]:
-    ax[1].plot([HI - HB] * 2, y_lim, 'k--', alpha=0.5, label='$H_i - H_b$')
-if HB < ax[1].get_xlim()[-1]:
-    ax[1].plot([HB] * 2, y_lim, 'k-.', alpha=0.5, label='$H_D$')
-if SI_STRAT:
-    if HI - HG < ax[1].get_xlim()[-1]:
-        ax[1].plot([HI - HG] * 2, y_lim, 'k:', alpha=0.5, label='$H_C$')
-
-ax[1].set_xlabel('Penetration depth (m)')
-ax[1].set_ylabel('Pressure (Pa): ' + ax1_label)
-ax1.set_ylabel('Pressure (Pa): ' + ax2_label)
-
 # Legend
 l_, h_ = ax[0].get_legend_handles_labels()
 l0_, h0_ = ax0.get_legend_handles_labels()
 l_.extend(l0_)
 h_.extend(h0_)
-l1_, h1_ = ax[1].get_legend_handles_labels()
-l2_, h2_ = ax1.get_legend_handles_labels()
-l1_.extend(l2_)
-h1_.extend(h2_)
-ax[0].legend(l_, h_, loc='upper center', ncol=2, labelspacing=0.2, columnspacing=1,
-             bbox_to_anchor=(0.5, -0.1), frameon=False)
-ax[1].legend(l1_, h1_, loc='upper center', ncol=2, labelspacing=0.2, columnspacing=1,
-             bbox_to_anchor=(0.5, -0.1), frameon=False)
+ax[0].legend(l_, h_, loc='upper center', ncol=3, labelspacing=0.2, columnspacing=1,
+             bbox_to_anchor=(0.5, -0.15), frameon=False)
+
 
 fig.subplots_adjust(bottom=0, top=1)
-ho_fn = run_fn + '-ho.jpg'
-ps_fp = os.path.join(run_fp, ho_fn)
-
-plt.suptitle(str(
-    '$\overline{R}$=%.1e, H$_R$=%.2f, V$_R$=%.2e, $\Delta$L=%.2f, $\\tau$: %s, TS:%s\n N$_{layer}$=%i, dt=%.2f ' %
-    (ps_df.r[:-1].mean(), HR, VR, dL, str(TORT)[0], str(TORT)[0], N_layers, t_step)))
 plt.tight_layout()
 
-ps_fp = os.path.join(run_fp, run_fn + 'results.jpg')
+ps_fp = os.path.join(run_fp, run_fn + 'results-FR.jpg')
 plt.savefig(ps_fp, dpi=300)  # Save figures
 plt.show()
 

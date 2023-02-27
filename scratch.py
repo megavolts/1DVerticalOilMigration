@@ -29,7 +29,7 @@ S_si = 5  # ppt
 S_sw = 32
 V = 10  # ml
 dT = 3  # C
-dh =1
+dh = 1
 
 L = pysic.property.si.latent_heat(S_si, T_si, 'fusion') # J kg-1
 cp = pysic.property.si.heat_capacity(S_si, T_si)  # J kg-1 K-1
